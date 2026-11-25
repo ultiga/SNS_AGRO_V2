@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SNS Agro — Real-Time Overall &amp; Payroll Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Top App Bar -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 28 28" fill="none">
+            <rect width="28" height="28" rx="8" fill="#14532d"/>
+            <path d="M14 6C10.5 9 8.5 12.6 8.5 16C8.5 19.3 11 21.8 14 21.8C17 21.8 19.5 19.3 19.5 16C19.5 12.6 17.5 9 14 6Z" fill="#4ade80" fill-opacity="0.9"/>
+            <path d="M14 10V21.5M14 14.5L17.2 12.5M14 17.5L10.8 15.5" stroke="#0f3d2e" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">SNS Agro Enterprise</h1>
+          <p class="brand-sub">Real-Time Monthly Overall &amp; Payroll Reports</p>
+        </div>
+      </div>
+
+      <div class="sync-controls">
+        <div id="live-pill" class="live-pill is-syncing" title="Live Google Sheets connection status">
+          <span class="live-dot"></span>
+          <span id="live-label">Connecting…</span>
+          <span id="live-meta" class="live-meta"></span>
+        </div>
+
+        <label class="interval-control" title="Auto-sync polling interval">
+          <span>Auto-sync</span>
+          <select id="poll-select">
+            <option value="10">10s</option>
+            <option value="15" selected>15s</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+            <option value="0">Paused</option>
+          </select>
+        </label>
+
+        <button id="btn-refresh" class="btn btn-primary" type="button" title="Fetch latest data from Google Sheets immediately">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M16.5 10a6.5 6.5 0 1 1-1.6-4.3" stroke-linecap="round"/>
+            <path d="M16.5 3.5v3.2h-3.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Sync Now</span>
+        </button>
+
+        <button id="btn-print" class="btn btn-ghost" type="button" title="Print current report">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path d="M5 7V3h10v4M5 14H3.5A1.5 1.5 0 0 1 2 12.5v-4A1.5 1.5 0 0 1 3.5 7h13A1.5 1.5 0 0 1 18 8.5v4a1.5 1.5 0 0 1-1.5 1.5H15"/>
+            <rect x="5" y="11" width="10" height="6" rx="1"/>
+          </svg>
+          <span>Print</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation & Filter Strip -->
+    <div class="navstrip">
+      <div class="navstrip-inner">
+        <nav class="tabs" role="tablist" aria-label="Report views">
+          <button class="tab is-active" data-tab="overall" role="tab" aria-selected="true">
+            <span class="tab-num">1</span>
+            <span>Monthly Overall Report</span>
+            <span class="tab-source">Job Type</span>
+          </button>
+          <button class="tab" data-tab="payroll" role="tab" aria-selected="false">
+            <span class="tab-num">2</span>
+            <span>Monthly Payroll Report</span>
+            <span class="tab-source">Upah</span>
+          </button>
+          <button class="tab" data-tab="data" role="tab" aria-selected="false">
+            <span class="tab-num">3</span>
+            <span>Live Entries &amp; Rates</span>
+            <span class="tab-source" id="entries-count-badge">0</span>
+          </button>
+        </nav>
+
+        <div class="sheet-links" id="sheet-links"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Global Month Filter Bar -->
+  <section class="filterbar" id="month-filterbar">
+    <div class="filterbar-inner">
+      <div class="filter-group">
+        <span class="filter-label">Month Filter</span>
+        <div id="month-pills" class="month-pills" role="group" aria-label="Filter by month"></div>
+      </div>
+      <div class="filter-right">
+        <div class="search-wrap">
+          <svg class="icon search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="9" cy="9" r="5.5"/>
+            <path d="M13.5 13.5L17 17" stroke-linecap="round"/>
+          </svg>
+          <input id="global-search" type="search" placeholder="Filter job type, worker, remark…" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Error Banner (shown only if sync fails) -->
+  <div id="error-banner" class="error-banner hidden" role="alert"></div>
+
+  <!-- Main Content -->
+  <main class="container">
+    <!-- ==================== SUMMARY #1: MONTHLY OVERALL REPORT ==================== -->
+    <section id="view-overall" class="tab-panel is-active" role="tabpanel">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">Summary #1 &bull; Powered by Job Type.gsheet</div>
+          <h2>Monthly Overall Report <span id="overall-period-label" class="period-pill">All Months</span></h2>
+          <p class="section-desc">All job types listed from <code>Job Type.gsheet</code>. Cash Flow <strong>In</strong> is positive (<code>+</code>) and <strong>Out</strong> is negative (<code>&minus;</code>).</p>
+        </div>
+        <div class="section-actions">
+          <button id="btn-export-overall" class="btn btn-outline" type="button">Export Breakdown CSV</button>
+          <button id="btn-export-overall-matrix" class="btn btn-outline" type="button">Export Matrix CSV</button>
+        </div>
+      </div>
+
+      <!-- KPI Strip -->
+      <div class="kpi-grid" id="overall-kpis"></div>
+
+      <!-- Selected Month Breakdown Table -->
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h3>Job Type Breakdown <span id="overall-table-period" class="muted-tag"></span></h3>
+            <p class="card-sub">Click any row to inspect the underlying live entries from <code>Completed Jom Entry.gsheet</code>.</p>
+          </div>
+          <div class="legend-pills">
+            <span class="badge badge-in">In = Positive (+)</span>
+            <span class="badge badge-out">Out = Negative (&minus;)</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="overall-breakdown-table">
+            <thead>
+              <tr>
+                <th>Job Type</th>
+                <th>Unit</th>
+                <th class="num">Unit Price</th>
+                <th>Cash Flow</th>
+                <th class="num">Entries</th>
+                <th class="num">Total Qty</th>
+                <th class="num">Signed Amount (RM)</th>
+                <th class="num">% of Flow</th>
+              </tr>
+            </thead>
+            <tbody id="overall-breakdown-body"></tbody>
+            <tfoot id="overall-breakdown-foot"></tfoot>
+          </table>
+        </div>
+      </article>
+
+      <!-- Visual Analytics Row -->
+      <div class="charts-grid">
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Monthly Cash Flow Trend</h3>
+              <p class="card-sub">Inflow (+), Outflow (&minus;), and Net balance across all months</p>
+            </div>
+          </div>
+          <div id="overall-monthly-chart" class="chart-box"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Job Type Net Contribution <span id="overall-chart-period" class="muted-tag"></span></h3>
+              <p class="card-sub">Signed RM impact by job type</p>
+            </div>
+          </div>
+          <div id="overall-jobtype-chart" class="chart-box"></div>
+        </article>
+      </div>
+
+      <!-- Monthly Matrix (Job Type x Months) -->
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h3>Monthly Overall Matrix (All Months)</h3>
+            <p class="card-sub">Compare every job type month-by-month. Click any month column header to filter the detail view above.</p>
+          </div>
+          <div class="segmented" id="overall-matrix-toggle" role="group" aria-label="Matrix metric">
+            <button type="button" class="seg-btn is-active" data-metric="amount">Amount (RM)</button>
+            <button type="button" class="seg-btn" data-metric="qty">Quantity</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table matrix-table" id="overall-matrix-table"></table>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== SUMMARY #2: MONTHLY PAYROLL REPORT ==================== -->
+    <section id="view-payroll" class="tab-panel" role="tabpanel">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">Summary #2 &bull; Powered by Upah.gsheet</div>
+          <h2>Monthly Payroll Report <span id="payroll-period-label" class="period-pill">All Months</span></h2>
+          <p class="section-desc">Worker earnings &amp; deductions from <code>Upah.gsheet</code>. Cash Flow <strong>In</strong> is positive earnings (<code>+</code>) and <strong>Out</strong> is negative advances/deductions (<code>&minus;</code>). Case-merged names; <code>SNS Agro</code> company expenses excluded from Payroll totals and shown separately below.</p>
+        </div>
+        <div class="section-actions">
+          <button id="btn-export-payroll" class="btn btn-outline" type="button">Export Payroll CSV</button>
+          <button id="btn-export-payroll-matrix" class="btn btn-outline" type="button">Export Matrix CSV</button>
+        </div>
+      </div>
+
+      <!-- KPI Strip -->
+      <div class="kpi-grid" id="payroll-kpis"></div>
+
+      <!-- Worker Payroll Table -->
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h3>Worker Payroll Breakdown <span id="payroll-table-period" class="muted-tag"></span></h3>
+            <p class="card-sub">Click any worker row to expand their per-job-type payslip breakdown and print payslip.</p>
+          </div>
+          <div class="legend-pills">
+            <span class="badge badge-in">In = Earnings (+)</span>
+            <span class="badge badge-out">Out = Advances / Deductions (&minus;)</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="payroll-workers-table">
+            <thead>
+              <tr>
+                <th style="width:28px;"></th>
+                <th>Worker Name</th>
+                <th class="num">Entries</th>
+                <th>Job Summary</th>
+                <th class="num">Earnings / In (+)</th>
+                <th class="num">Deductions / Out (&minus;)</th>
+                <th class="num">Net Payable (RM)</th>
+              </tr>
+            </thead>
+            <tbody id="payroll-workers-body"></tbody>
+            <tfoot id="payroll-workers-foot"></tfoot>
+          </table>
+        </div>
+      </article>
+
+      <!-- Visual Analytics Row -->
+      <div class="charts-grid">
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Worker Net Payable Comparison <span id="payroll-chart-period" class="muted-tag"></span></h3>
+              <p class="card-sub">Earnings (+) vs Deductions (&minus;) and Net Payable per worker</p>
+            </div>
+          </div>
+          <div id="payroll-worker-chart" class="chart-box"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Monthly Payroll Trend</h3>
+              <p class="card-sub">Total worker earnings (+), deductions (&minus;), and net payroll across months</p>
+            </div>
+          </div>
+          <div id="payroll-monthly-chart" class="chart-box"></div>
+        </article>
+      </div>
+
+      <!-- Monthly Payroll Matrix (Workers x Months) -->
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h3>Monthly Payroll Matrix (Workers &times; Months)</h3>
+            <p class="card-sub">Track every worker's monthly payroll side by side. Click a month header to filter.</p>
+          </div>
+          <div class="segmented" id="payroll-matrix-toggle" role="group" aria-label="Payroll matrix metric">
+            <button type="button" class="seg-btn is-active" data-metric="net">Net Payable</button>
+            <button type="button" class="seg-btn" data-metric="in">Earnings (+)</button>
+            <button type="button" class="seg-btn" data-metric="out">Deductions (&minus;)</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table matrix-table" id="payroll-matrix-table"></table>
+        </div>
+      </article>
+
+      <!-- Company / Non-Worker (SNS Agro) Separate Card -->
+      <article class="card card-company" id="company-expenses-card">
+        <div class="card-head">
+          <div>
+            <h3>Company / Non-Worker Entries (<code>SNS Agro</code>) <span class="badge badge-neutral">Excluded from Worker Payroll</span></h3>
+            <p class="card-sub">Logged under <code>Job Done By = SNS Agro</code>. Displayed separately so 100% of sheet records stay reconciled.</p>
+          </div>
+          <div id="company-total-badge" class="company-total-badge"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="company-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Month</th>
+                <th>Job Type</th>
+                <th class="num">Qty</th>
+                <th>Unit</th>
+                <th>Cash Flow</th>
+                <th class="num">Signed Amount (RM)</th>
+                <th>Remark</th>
+              </tr>
+            </thead>
+            <tbody id="company-table-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== TAB 3: LIVE ENTRIES & RATE CARDS ==================== -->
+    <section id="view-data" class="tab-panel" role="tabpanel">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">Live Source Inspector</div>
+          <h2>Live Google Sheets Data &amp; Rate Cards</h2>
+          <p class="section-desc">Direct real-time mirror of <code>Job Type.gsheet</code>, <code>Upah.gsheet</code>, and <code>Completed Jom Entry.gsheet</code>.</p>
+        </div>
+        <div class="section-actions">
+          <button id="btn-export-raw" class="btn btn-outline" type="button">Export Filtered Entries CSV</button>
+        </div>
+      </div>
+
+      <div class="rates-grid">
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Job Type Rates <span class="muted-tag">Summary #1</span></h3>
+              <p class="card-sub">Live from <code>Job Type.gsheet</code></p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="rate-jobtype-table">
+              <thead>
+                <tr>
+                  <th>Job Type</th>
+                  <th>Unit</th>
+                  <th class="num">Unit Price (RM)</th>
+                  <th>Cash Flow</th>
+                </tr>
+              </thead>
+              <tbody id="rate-jobtype-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Upah Rates <span class="muted-tag">Summary #2</span></h3>
+              <p class="card-sub">Live from <code>Upah.gsheet</code></p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="rate-upah-table">
+              <thead>
+                <tr>
+                  <th>Job Type</th>
+                  <th>Unit</th>
+                  <th class="num">Unit Price (RM)</th>
+                  <th>Cash Flow</th>
+                </tr>
+              </thead>
+              <tbody id="rate-upah-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h3>Completed Jom Entry — Live Ledger <span id="raw-table-count" class="muted-tag"></span></h3>
+            <p class="card-sub">Showing both Summary #1 (Overall) and Summary #2 (Upah/Payroll) calculated signed amounts per row.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="raw-entries-table">
+            <thead>
+              <tr>
+                <th>Job Date</th>
+                <th>Month</th>
+                <th>Job Type</th>
+                <th>Job Done By</th>
+                <th class="num">Qty</th>
+                <th>Unit</th>
+                <th class="num">Overall (RM)</th>
+                <th class="num">Payroll / Upah (RM)</th>
+                <th>Remark</th>
+              </tr>
+            </thead>
+            <tbody id="raw-entries-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <!-- Slide-over Drill-Down Drawer -->
+  <div id="drawer-backdrop" class="drawer-backdrop hidden" aria-hidden="true"></div>
+  <aside id="drawer" class="drawer hidden" aria-label="Transaction details">
+    <div class="drawer-head">
+      <div>
+        <div id="drawer-eyebrow" class="eyebrow">Transaction Drill-Down</div>
+        <h3 id="drawer-title">Details</h3>
+        <p id="drawer-sub" class="card-sub"></p>
+      </div>
+      <div class="drawer-actions">
+        <button id="drawer-print-btn" class="btn btn-outline hidden" type="button">Print Payslip</button>
+        <button id="drawer-close" class="icon-btn" type="button" aria-label="Close details">&times;</button>
+      </div>
+    </div>
+    <div id="drawer-kpis" class="drawer-kpis"></div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+
+  <script src="/app.js"></script>
+</body>
+</html>

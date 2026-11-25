@@ -1,0 +1,21 @@
+{
+  "port": 8765,
+  "pollIntervalSeconds": 15,
+  "spreadsheets": {
+    "completedEntries": {
+      "id": "YOUR_COMPLETED_JOM_ENTRY_SPREADSHEET_ID",
+      "name": "Completed Jom Entry",
+      "range": "Sheet1!A1:H"
+    },
+    "jobTypes": {
+      "id": "YOUR_JOB_TYPE_SPREADSHEET_ID",
+      "name": "Job Type",
+      "range": "Sheet1!A1:D"
+    },
+    "upah": {
+      "id": "YOUR_UPAH_SPREADSHEET_ID",
+      "name": "Upah",
+      "range": "Sheet1!A1:D"
+    }
+  }
+}
